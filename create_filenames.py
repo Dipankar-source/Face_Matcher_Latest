@@ -1,7 +1,7 @@
 import os
 import pickle
 
-DATASET_DIR = "data"   # change if needed
+DATASET_DIR = "dataset"   # change if needed
 
 filenames = []
 
