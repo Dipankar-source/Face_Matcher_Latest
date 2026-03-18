@@ -1,6 +1,8 @@
 tensorflow
 keras
 keras-vggface
+keras_applications
+keras_preprocessing
 mtcnn
 opencv-python-headless
 streamlit
