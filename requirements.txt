@@ -10,3 +10,5 @@ keras_preprocessing
 mtcnn
 pillow
 tqdm
+seaborn
+matplotlib
