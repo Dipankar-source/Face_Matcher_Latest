@@ -425,55 +425,6 @@ div[data-testid="stDataFrame"] tr:hover td {
     background: rgba(123,108,255,0.035) !important;
 }
 
-/* confusion matrix table */
-.cm-wrap {
-    background: var(--bg1);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    overflow: auto;
-    margin-bottom: 24px;
-}
-.cm-inner { padding: 16px; }
-.cm-table {
-    border-collapse: collapse;
-    width: 100%;
-    font-family: var(--mono);
-    font-size: 11px;
-}
-.cm-table th {
-    padding: 6px 10px;
-    background: rgba(123,108,255,0.07);
-    color: var(--muted);
-    font-size: 9px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    border-bottom: 1px solid var(--border-hi);
-    text-align: center;
-    white-space: nowrap;
-}
-.cm-table th.row-header { text-align: left; }
-.cm-table td {
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border);
-    text-align: center;
-    color: var(--text);
-    transition: background .15s;
-}
-.cm-table td.label-cell {
-    color: var(--muted);
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    text-align: left;
-    white-space: nowrap;
-    background: rgba(255,255,255,0.012);
-    border-right: 1px dashed var(--border-hi);
-}
-.cm-table tr:last-child td { border-bottom: none; }
-.cm-cell-high  { color: #00e5a0 !important; font-weight: 500; }
-.cm-cell-med   { color: #f0a500 !important; }
-.cm-cell-zero  { color: var(--muted) !important; font-size: 9px; }
-.cm-diagonal   { background: rgba(0,207,180,0.07) !important; }
-
 /* accuracy banner */
 .acc-banner {
     display: flex; align-items: center; justify-content: space-between;
@@ -574,6 +525,69 @@ hr { border: none !important; border-top: 1px solid var(--border) !important; ma
 .dash-rule { border: none; border-top: 1px dashed var(--border-hi); margin: 16px 0; }
 ::-webkit-scrollbar { width: 3px; background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+
+/* Confusion Matrix Styles */
+.cm2-container {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 20px 0;
+}
+.cm2-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-hi);
+    background: rgba(123,108,255,0.03);
+}
+.cm2-header h3 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    margin: 0;
+    color: var(--accent2);
+}
+.cm2-matrix {
+    padding: 30px;
+    display: flex;
+    justify-content: center;
+}
+.cm2-table {
+    border-collapse: collapse;
+    font-family: var(--mono);
+}
+.cm2-table th, .cm2-table td {
+    padding: 20px 30px;
+    text-align: center;
+    border: 1px solid var(--border);
+}
+.cm2-table th {
+    background: rgba(123,108,255,0.05);
+    font-weight: 500;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+}
+.cm2-table td {
+    min-width: 150px;
+}
+.cm2-tp { background: rgba(0,207,180,0.1); }
+.cm2-tp .value { color: #00cfb4; font-size: 32px; font-weight: 700; }
+.cm2-fp { background: rgba(240,165,0,0.1); }
+.cm2-fp .value { color: #f0a500; font-size: 32px; font-weight: 700; }
+.cm2-fn { background: rgba(255,79,79,0.1); }
+.cm2-fn .value { color: #ff4f4f; font-size: 32px; font-weight: 700; }
+.cm2-tn { background: rgba(123,108,255,0.1); }
+.cm2-tn .value { color: #a89fff; font-size: 32px; font-weight: 700; }
+.cm2-label {
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    margin-top: 8px;
+    color: var(--muted);
+}
+.cm2-corner {
+    background: transparent;
+    border: none;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -645,54 +659,66 @@ def save_identity(name, emb, current_path):
 
 
 # ============================
-# 6. EVALUATION FUNCTION (table-based)
+# 6. EVALUATION FUNCTION
 # ============================
 
-def build_cm_html(cm, labels):
-    """Render confusion matrix as a styled HTML table."""
-    max_val = cm.max() if cm.max() > 0 else 1
-    header_cells = '<th class="row-header">Actual \\ Predicted</th>'
-    for lbl in labels:
-        short = lbl[:10] + ("…" if len(lbl) > 10 else "")
-        header_cells += f'<th>{short}</th>'
+def compute_aggregate_tpfpfntn(y_test, y_pred, labels):
+    """
+    Compute aggregated TP, FP, FN, TN across all classes
+    using one-vs-rest macro-averaging.
+    """
+    TP = FP = FN = TN = 0
+    for cls in labels:
+        y_true_bin = np.array([1 if v == cls else 0 for v in y_test])
+        y_pred_bin = np.array([1 if v == cls else 0 for v in y_pred])
+        TP += int(np.sum((y_true_bin == 1) & (y_pred_bin == 1)))
+        FP += int(np.sum((y_true_bin == 0) & (y_pred_bin == 1)))
+        FN += int(np.sum((y_true_bin == 1) & (y_pred_bin == 0)))
+        TN += int(np.sum((y_true_bin == 0) & (y_pred_bin == 0)))
+    return TP, FP, FN, TN
 
-    rows = ""
-    for i, actual in enumerate(labels):
-        short_actual = actual[:12] + ("…" if len(actual) > 12 else "")
-        row = f'<td class="label-cell">{short_actual}</td>'
-        for j, _ in enumerate(labels):
-            val  = int(cm[i][j])
-            diag = "cm-diagonal" if i == j else ""
-            ratio = val / max_val
-            if val == 0:
-                css = "cm-cell-zero"
-                display = "—"
-            elif ratio > 0.6:
-                css = "cm-cell-high"
-                display = str(val)
-            elif ratio > 0.2:
-                css = "cm-cell-med"
-                display = str(val)
-            else:
-                css = ""
-                display = str(val)
-            row += f'<td class="{diag} {css}">{display}</td>'
-        rows += f"<tr>{row}</tr>"
 
-    return f"""
-    <div class="cm-wrap">
-        <div class="eval-table-header">
-            <span class="eval-table-title">Confusion Matrix</span>
-            <span class="eval-table-badge">{len(labels)} CLASSES</span>
+def display_confusion_matrix(TP, FP, FN, TN):
+    """Display confusion matrix using HTML table"""
+    cm_html = f"""
+    <div class="cm2-container">
+        <div class="cm2-header">
+            <h3>CONFUSION MATRIX (Aggregated - One vs Rest)</h3>
         </div>
-        <div class="cm-inner">
-            <table class="cm-table">
-                <thead><tr>{header_cells}</tr></thead>
-                <tbody>{rows}</tbody>
+        <div class="cm2-matrix">
+            <table class="cm2-table">
+                <tr>
+                    <th class="cm2-corner"></th>
+                    <th>Predicted Positive</th>
+                    <th>Predicted Negative</th>
+                </tr>
+                <tr>
+                    <th>Actual Positive</th>
+                    <td class="cm2-tp">
+                        <div class="value">{TP:,}</div>
+                        <div class="cm2-label">True Positive</div>
+                    </td>
+                    <td class="cm2-fn">
+                        <div class="value">{FN:,}</div>
+                        <div class="cm2-label">False Negative</div>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Actual Negative</th>
+                    <td class="cm2-fp">
+                        <div class="value">{FP:,}</div>
+                        <div class="cm2-label">False Positive</div>
+                    </td>
+                    <td class="cm2-tn">
+                        <div class="value">{TN:,}</div>
+                        <div class="cm2-label">True Negative</div>
+                    </td>
+                </tr>
             </table>
         </div>
     </div>
     """
+    st.markdown(cm_html, unsafe_allow_html=True)
 
 
 def evaluate_model(face_db):
@@ -707,10 +733,10 @@ def evaluate_model(face_db):
             y.append(name)
 
     if len(X) < 10:
-        st.warning("Not enough data in database to run evaluation.")
+        st.warning("Not enough data in database to run evaluation. Need at least 10 samples.")
         return
 
-    n_total = len(X)
+    n_total   = len(X)
     n_classes = len(set(y))
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -729,13 +755,12 @@ def evaluate_model(face_db):
         y_pred.append(all_labels[idx])
         progress_bar.progress((i + 1) / total)
 
-    acc = accuracy_score(y_test, y_pred)
+    acc     = accuracy_score(y_test, y_pred)
     acc_pct = int(acc * 100)
 
     report = classification_report(y_test, y_pred, output_dict=True)
 
     labels_present = sorted(set(y_test) | set(y_pred))
-    cm = confusion_matrix(y_test, y_pred, labels=labels_present)
 
     # ── meta chips ──────────────────────────────────────
     st.markdown(f"""
@@ -762,20 +787,23 @@ def evaluate_model(face_db):
     """, unsafe_allow_html=True)
 
     # ── per-class stat tiles (up to 4 classes shown) ─────
-    display_classes = [c for c in labels_present if c in report and c not in ("accuracy","macro avg","weighted avg")][:4]
+    display_classes = [
+        c for c in labels_present
+        if c in report and c not in ("accuracy", "macro avg", "weighted avg")
+    ][:4]
     if display_classes:
         tiles_html = '<div class="eval-grid">'
-        colors = ["#7b6cff","#00cfb4","#f0a500","#ff4f4f"]
+        colors = ["#7b6cff", "#00cfb4", "#f0a500", "#ff4f4f"]
         for idx2, cls in enumerate(display_classes):
-            p  = report[cls]
-            f1 = int(p["f1-score"] * 100)
-            c  = colors[idx2 % len(colors)]
+            p        = report[cls]
+            f1       = int(p["f1-score"] * 100)
+            c        = colors[idx2 % len(colors)]
             short_cls = cls[:14] + ("…" if len(cls) > 14 else "")
             tiles_html += f"""
             <div class="eval-tile">
                 <div class="eval-tile-label">{short_cls}</div>
                 <div class="eval-tile-val">{f1}<span style="font-size:13px;color:var(--muted)">%</span></div>
-                <div class="eval-tile-sub">f1-score · support {int(p['support'])}</div>
+                <div class="eval-tile-sub">f1-score</div>
                 <div class="eval-tile-bar">
                     <div class="eval-tile-bar-fill" style="width:{f1}%;background:{c}"></div>
                 </div>
@@ -783,7 +811,7 @@ def evaluate_model(face_db):
         tiles_html += "</div>"
         st.markdown(tiles_html, unsafe_allow_html=True)
 
-    # ── classification report table ───────────────────────
+    # ── classification report table (without Support column) ───────
     report_rows = []
     for cls in labels_present:
         if cls in report:
@@ -793,7 +821,6 @@ def evaluate_model(face_db):
                 "Precision": f"{p['precision']:.3f}",
                 "Recall":    f"{p['recall']:.3f}",
                 "F1-Score":  f"{p['f1-score']:.3f}",
-                "Support":   int(p["support"]),
             })
     for avg in ["macro avg", "weighted avg"]:
         if avg in report:
@@ -803,7 +830,6 @@ def evaluate_model(face_db):
                 "Precision": f"{p['precision']:.3f}",
                 "Recall":    f"{p['recall']:.3f}",
                 "F1-Score":  f"{p['f1-score']:.3f}",
-                "Support":   int(p["support"]),
             })
 
     st.markdown("""
@@ -817,8 +843,9 @@ def evaluate_model(face_db):
     df_report = pd.DataFrame(report_rows).set_index("Class")
     st.dataframe(df_report, use_container_width=True)
 
-    # ── confusion matrix (HTML table) ────────────────────
-    st.markdown(build_cm_html(cm, labels_present), unsafe_allow_html=True)
+    # ── 2×2 confusion matrix ─────────────────────────────
+    TP, FP, FN, TN = compute_aggregate_tpfpfntn(y_test, y_pred, labels_present)
+    display_confusion_matrix(TP, FP, FN, TN)
 
 
 # ============================
@@ -929,6 +956,14 @@ else:
                 </div>
                 <div class="rc-body">
                     <p class="id-name">{name}</p>
+                    <div class="score-row">
+                        <span class="score-lbl">Confidence</span>
+                        <span class="score-val">{score_pct}%</span>
+                    </div>
+                    <div class="score-track">
+                        <div class="score-fill"></div>
+                    </div>
+                    <div class="status-chip">{status_text}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
